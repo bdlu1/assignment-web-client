@@ -41,13 +41,21 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        # get the header then break it down further to get the code
+        # (second element in the header)
+        code = data.split("\r\n\r\n")[0].split()[1]
+        code = int(code)
+        return code
 
-    def get_headers(self,data):
-        return None
+    def get_headers(self, data):
+        # header is first element
+        header = data.split("\r\n\r\n")[0]
+        return header
 
     def get_body(self, data):
-        return None
+        # body is second element 
+        body = data.split("\r\n\r\n")[1]
+        return body
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -70,11 +78,69 @@ class HTTPClient(object):
     def GET(self, url, args=None):
         code = 500
         body = ""
+        
+        # parse url to get the scheme, host, and port
+        urlParsed = urllib.parse.urlparse(url)
+        scheme = urlParsed.scheme
+        host = urlParsed.hostname
+        port = urlParsed.port
+        
+        # check if there's currently a port and what the scheme is and assign the appropriate port
+        if (port == None) and (scheme == "https"):
+            port = 443
+        elif (port == None) and (scheme == "http"):
+            port = 80
+        
+        self.connect(host, port)
+
+        # send the request
+        self.sendall(f'GET {url} HTTP/1.1\r\nHost: {host}\r\nConnection: Closed\r\n\r\n')
+
+        # receive the data and extract the code and body
+        dataReceived = self.recvall(self.socket)
+
+        code = self.get_code(dataReceived)
+        body = self.get_body(dataReceived)
+        
+        self.close()
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
         code = 500
         body = ""
+
+        urlParsed = urllib.parse.urlparse(url)
+        scheme = urlParsed.scheme
+        host = urlParsed.hostname
+        port = urlParsed.port
+        
+        # check if there's currently a port and what the scheme is and assign the appropriate port
+        if (port == None) and (scheme == "https"):
+            port = 443
+        elif (port == None) and (scheme == "http"):
+            port = 80
+
+        self.connect(host, port)
+
+        # initialize content to empty incase there are no arguments
+        content = ""
+        
+        # check if there are actually arguments
+        if args != None:
+            # if there are arguments then append the key-value pairs to content
+            for keys, values in args.items():
+                content += f'{keys}={values}&'
+        contentLength = len(content)
+
+        # construct and send the request
+        request = f"POST {url} HTTP/1.1\r\nHost: {host}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {contentLength}\r\nConnection: Closed\r\n\r\n{content}"
+        self.sendall(request)
+
+        # receive the data and extract the code and body
+        dataReceived = self.recvall(self.socket)
+        code = self.get_code(dataReceived)
+        body = self.get_body(dataReceived)
+        self.close()
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
